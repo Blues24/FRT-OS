@@ -4,10 +4,10 @@
 #include <cstdlib>
 
 // @example posisi_motor[2] = {pin maju, pin mundur}
-const uint8_t FRONT_LEFT_MOTOR_PIN[2] = {0, 0};
-const uint8_t FRONT_RIGHT_MOTOR_PIN[2] = {0, 0};
-const uint8_t BACK_LEFT_MOTOR_PIN[2] = {0, 0};
-const uint8_t BACK_RIGHT_MOTOR_PIN[2] = {0, 0};
+const uint8_t FRONT_LEFT_MOTOR_PIN[2] = {16, 2};
+const uint8_t FRONT_RIGHT_MOTOR_PIN[2] = {15, 4};
+const uint8_t BACK_LEFT_MOTOR_PIN[2] = {12, 3};
+const uint8_t BACK_RIGHT_MOTOR_PIN[2] = {17, 6};
 
 // Peripheral
 const uint8_t FRONT_LEFT_GRIPPER_PIN = 0;
@@ -16,14 +16,5 @@ const uint8_t BACK_LEFT_GRIPER_PIN = 1;
 const uint8_t BACK_RIGHT_GRIPPER_PIN = 2;
 const uint8_t BUZZER_PIN = 2;
 
-// Channel
-const uint8_t FRONT_LEFT_MOTOR_CH = 1;
-const uint8_t FRONT_RIGHT_MOTOR_CH = 2;
-const uint8_t BACK_LEFT_MOTOR_CH = 3;
-const uint8_t BACK_RIGHT_MOTOR_CH = 4;
 
-// Motor Frequency
-const uint32_t MOTOR_FREQ = 10000;
-// Resolution
-const uint8_t BIT_RESOLUTION = 8;
 #endif // RAGGEDYPINS_H
