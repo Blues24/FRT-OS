@@ -42,7 +42,7 @@ void ControllerMgr::setCurve(float x1, float x2, float y1, float y2){
     bezierControlX1 = constrain(x1, 0.0f, 1.0f);
     bezierControlX2 = constrain(x2, 0.0f, 1.0f);
     bezierControlY1 = constrain(y1, 0.0f, 1.0f);
-    bezierControlX2 = constrain(y2, 0.0f, 1.0f);
+    bezierControlY2 = constrain(y2, 0.0f, 1.0f);
 }
 
 void ControllerMgr::getDriveInput(float& leftStickX, float& leftStickY, float& rightStickX, int16_t& outSpeed){
