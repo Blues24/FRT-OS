@@ -34,8 +34,8 @@ bool ControllerMgr::isConnected(){
 }
 
 int ControllerMgr::getBatteryLevel(){
-    if (!isConnected) return 0;
-    else return Ps3.data.status.battery;
+    if (!isConnected()) return 0;
+    return Ps3.data.status.battery;
 }
 
 void ControllerMgr::setCurve(float x1, float x2, float y1, float y2){
