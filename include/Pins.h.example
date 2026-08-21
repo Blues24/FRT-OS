@@ -24,4 +24,6 @@ const uint8_t BACK_RIGHT_MOTOR_CH = 4;
 
 // Motor Frequency
 const uint32_t MOTOR_FREQ = 10000;
+// Resolution
+const uint8_t BIT_RESOLUTION = 8 
 #endif // PINS_H
