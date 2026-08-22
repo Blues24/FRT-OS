@@ -62,16 +62,16 @@ void ControllerMgr::getDriveInput(float& leftStickX, float& leftStickY, float& r
     int absRightX = abs(stickRightX);
     int absRightY = abs(stickRightY);
 
-    if(absLeftX < MIN_DZ)    leftStickX = 0;
-    if(absLeftY < MIN_DZ)    leftStickY = 0;
-    if(absRightX < BOOST_DZ) rightStickX = 0;
-    if(absRightY < MIN_DZ)   rightStickX = 0;
+    if(absLeftX < MIN_DZ)    stickLeftX = 0;
+    if(absLeftY < MIN_DZ)    stickLeftY = 0;
+    if(absRightX < BOOST_DZ) stickRightX = 0;
+    if(absRightY < MIN_DZ)   stickRightY = 0;
 
     // normalisasikan input dari -1.0 sampai dengan 1.0
     float normalizedLeftX, normalizedLeftY, normalizedRightX = 0;
 
-    if(absLeftX > BOOST_DZ)  normalizedLeftX = (leftStickX - (leftStickX > 0 ? BOOST_DZ : -BOOST_DZ)) / (127.0f - BOOST_DZ);
-    if(absLeftY > BOOST_DZ)  normalizedLeftY = (leftStickY - (leftStickY > 0 ? BOOST_DZ : -BOOST_DZ)) / (127.0f - BOOST_DZ);
+    if(absLeftX > BOOST_DZ)  normalizedLeftX = (stickLeftX - (stickLeftX > 0 ? BOOST_DZ : -BOOST_DZ)) / (127.0f - BOOST_DZ);
+    if(absLeftY > BOOST_DZ)  normalizedLeftY = (stickLeftY - (stickLeftY > 0 ? BOOST_DZ : -BOOST_DZ)) / (127.0f - BOOST_DZ);
     if(absRightX > BOOST_DZ) normalizedRightX = rightStickX / 127.0f;
 
     normalizedLeftX  = constrain(normalizedLeftX, -1.0f, 1.0f);
@@ -104,7 +104,7 @@ void ControllerMgr::getDriveInput(float& leftStickX, float& leftStickY, float& r
         }
     }
 
-    leftStickX  = normalizedLeftX; leftStickY = normalizedLeftY;
+    stickLeftX  = normalizedLeftX; stickLeftY = normalizedLeftY;
     rightStickX = normalizedRightX; outSpeed = mSpeed;
 }
 
@@ -144,7 +144,8 @@ float ControllerMgr::solveBezier(float target_axis){
         }
 
         // Persempit bracket
-        if (getBezierSample(t).x > target_axis) upperVal = t;
+        float xAtT = getBezierSample(t).x; 
+        if (xAtT > target_axis) upperVal = t;
         else lowerVal = t;
 
     }
@@ -152,7 +153,7 @@ float ControllerMgr::solveBezier(float target_axis){
     return t;
 }
 
-inline float ControllerMgr::applyBezierCurve(float rawVal){
+float ControllerMgr::applyBezierCurve(float rawVal){
     if(rawVal == 0) return 0;
 
     float absInputVal = fabsf(rawVal);
@@ -174,6 +175,8 @@ bool ControllerMgr::isPressed(ButtonPress Btn){
         case ButtonPress::Right:     return Ps3.data.button.right;
         case ButtonPress::L1:        return Ps3.data.button.l1;
         case ButtonPress::L2:        return Ps3.data.button.l2;
+        case ButtonPress::R1:        return Ps3.data.button.r1;
+        case ButtonPress::R2:        return Ps3.data.button.r2;
         case ButtonPress::Select:    return Ps3.data.button.select;
         case ButtonPress::Start:     return Ps3.data.button.start;
         case ButtonPress::PSButton:  return Ps3.data.button.ps;
