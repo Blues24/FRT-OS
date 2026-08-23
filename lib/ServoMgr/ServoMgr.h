@@ -28,6 +28,9 @@ void servoToggle(int index);
 void servoSetAngle(int index, int angle);
 void servoSetConfig(int index, bool invert, int offset, int openAngle, int closeAngle);
 
+// Set invert saja tanpa ubah open/close angle
+void servoSetInvert(int index, bool invert);
+
 void servoOpenGripper(int unit);
 void servoCloseGripper(int unit);
 
