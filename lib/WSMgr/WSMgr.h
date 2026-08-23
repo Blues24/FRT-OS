@@ -1,4 +1,5 @@
-#ifndef WSMGR_H
-#define WSMGR_H
+#pragma once
 
-#endif // WSMGR_H
+#include <ESPAsyncWebServer.h>
+
+void wsMgrBegin();
