@@ -1,4 +1,24 @@
-#ifndef GRIPPER_H
-#define GRIPPER_H
+#pragma once
 
-#endif // GRIPPER_H
+#include <Arduino.h>
+#include <ESP32Servo.h>
+
+struct Gripper {
+    int pin = -1;
+    Servo servo;
+    bool invert = false;
+    int offset = 0;
+    int openAngle = 180;
+    int closeAngle = 0;
+    int currentAngle = 90;
+};
+
+void gripperInit(Gripper& g, int pin = -1);
+void gripperSetConfig(Gripper& g, bool invert, int offset, int openAngle, int closeAngle);
+void gripperSetAngle(Gripper& g, int angle);
+void gripperOpen(Gripper& g);
+void gripperClose(Gripper& g);
+void gripperToggle(Gripper& g);
+bool gripperIsOpen(const Gripper& g);
+bool gripperIsValid(const Gripper& g);
+int gripperGetAngle(const Gripper& g);

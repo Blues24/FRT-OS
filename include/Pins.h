@@ -1,27 +1,34 @@
-#ifndef PINS_H
-#define PINS_H
+#pragma once
 
-#include <cstdlib>
+#include <cstdint>
 
-// @example posisi_motor[2] = {pin maju, pin mundur}
-const uint8_t FRONT_LEFT_MOTOR_PIN[2]  = {0,0};
-const uint8_t FRONT_RIGHT_MOTOR_PIN[2] = {0,0};
-const uint8_t BACK_LEFT_MOTOR_PIN[2]   = {0,0};
-const uint8_t BACK_RIGHT_MOTOR_PIN[2]  = {0,0};
+// Motor pins: {maju, mundur}
+const uint8_t FRONT_LEFT_MOTOR_PIN[2]  = {0, 0};
+const uint8_t FRONT_RIGHT_MOTOR_PIN[2] = {0, 0};
+const uint8_t BACK_LEFT_MOTOR_PIN[2]   = {0, 0};
+const uint8_t BACK_RIGHT_MOTOR_PIN[2]  = {0, 0};
 
-// Peripheral
-const uint8_t FRONT_LEFT_GRIPPER_PIN = 0;
-const uint8_t FRONT_RIGHT_GRIPPER_PIN = 1;
-const uint8_t BACK_LEFT_GRIPER_PIN = 1;
-const uint8_t BACK_RIGHT_GRIPPER_PIN = 2;
+// Gripper 1
+const uint8_t GRIP1_BIG_PIN    = 0;
+const uint8_t GRIP1_SMALL1_PIN = 0;
+const uint8_t GRIP1_SMALL2_PIN = 0;
+
+// Gripper 2
+const uint8_t GRIP2_BIG_PIN    = 0;
+const uint8_t GRIP2_SMALL1_PIN = 0;
+const uint8_t GRIP2_SMALL2_PIN = 0;
+
 const uint8_t BUZZER_PIN = 2;
 
-// Channel
-const uint8_t FRONT_LEFT_MOTOR_CH = 1;
-const uint8_t FRONT_RIGHT_MOTOR_CH = 2;
-const uint8_t BACK_LEFT_MOTOR_CH = 3;
-const uint8_t BACK_RIGHT_MOTOR_CH = 4;
+const int GRIPPER_PINS[6] = {
+    GRIP1_BIG_PIN, GRIP1_SMALL1_PIN, GRIP1_SMALL2_PIN,
+    GRIP2_BIG_PIN, GRIP2_SMALL1_PIN, GRIP2_SMALL2_PIN
+};
 
-// Motor Frequency
+// PWM channels
+const uint8_t FRONT_LEFT_MOTOR_CH  = 1;
+const uint8_t FRONT_RIGHT_MOTOR_CH = 2;
+const uint8_t BACK_LEFT_MOTOR_CH   = 3;
+const uint8_t BACK_RIGHT_MOTOR_CH  = 4;
+
 const uint32_t MOTOR_FREQ = 10000;
-#endif // PINS_H
