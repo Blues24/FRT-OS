@@ -49,6 +49,8 @@ enum class ButtonPress{
 
 class ControllerMgr {
     private:
+        // Constructor Kelas ControllerMgr
+        ControllerMgr();
         // ---- Konstanta tuning drive ----
         // Kecepatan PWM motor saat idle/tanpa boost.
         static const int16_t BASE_MOTOR_SPD              = 100;
@@ -102,6 +104,8 @@ class ControllerMgr {
          */
         inline BezierSample getBezierSample(float t);
     public:
+        ControllerMgr(const ControllerMgr&) = delete;
+        ControllerMgr operator=(const ControllerMgr&) = delete;
         /**
          * @brief Mengakses instance tunggal ControllerMgr (Meyers singleton,
          *        thread-safe inisialisasi di C++11+, hemat RAM karena dialokasikan
