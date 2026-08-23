@@ -47,8 +47,14 @@ void DriveMgr::SetMotorSpeed(uint8_t motorIdx, int16_t speed)
         return;
 
     // Internal clamp — caller must not be trusted.
-    if (speed > MAX_MOTOR_SPEED)  speed = MAX_MOTOR_SPEED;
-    if (speed < -MAX_MOTOR_SPEED) speed = -MAX_MOTOR_SPEED;
+    if (speed > MAX_MOTOR_SPEED)
+    {
+        speed = MAX_MOTOR_SPEED;
+    }
+    if (speed < -MAX_MOTOR_SPEED)
+    {
+        speed = -MAX_MOTOR_SPEED;
+    }
 
     // Safe magnitude: avoid abs(INT16_MIN) UB by branching.
     uint16_t mag = (speed < 0)

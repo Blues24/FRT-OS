@@ -104,8 +104,10 @@ void ControllerMgr::getDriveInput(float& leftStickX, float& leftStickY, float& r
         }
     }
 
-    stickLeftX  = normalizedLeftX; stickLeftY = normalizedLeftY;
-    rightStickX = normalizedRightX; outSpeed = mSpeed;
+    leftStickX  = normalizedLeftX;
+    leftStickY  = normalizedLeftY;
+    rightStickX = normalizedRightX;
+    outSpeed    = mSpeed;
 }
 
 inline BezierSample ControllerMgr::getBezierSample(float t){
