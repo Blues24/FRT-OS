@@ -16,6 +16,4 @@ const uint8_t BACK_LEFT_GRIPER_PIN = 1;
 const uint8_t BACK_RIGHT_GRIPPER_PIN = 2;
 const uint8_t BUZZER_PIN = 2;
 
-const uint8_t BUZZER_CHANNEL = 14; 
-
 #endif // RAGGEDYPINS_H
