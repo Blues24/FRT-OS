@@ -1,4 +1,5 @@
 #include "ControllerMgr.h"
+#include "Buzzer.h"
 
 // Buat satu instance menggunakan meyers singleton
 ControllerMgr& ControllerMgr::getInstance(){
@@ -10,14 +11,17 @@ ControllerMgr::ControllerMgr() : bezierControlX1(0.0f), bezierControlX2(1.0f), b
 
 void ControllerMgr::notifyUser(){
     // Sambut pengguna menggunakan buzzer
+    Buzzer::getBuzzerInstance().playStartup();
 }
 
 void ControllerMgr::onConnect(){
+    Buzzer::getBuzzerInstance().playConnect();
     Serial.println("[INFO] PS3 Controller has been Connected!");
     
 }
 
 void ControllerMgr::onDisconnect(){
+    Buzzer::getBuzzerInstance().stop();
     Serial.println("[INFO] PS3 Controller has been Disconnected!");
     
 }
@@ -68,7 +72,9 @@ void ControllerMgr::getDriveInput(float& leftStickX, float& leftStickY, float& r
     if(absRightY < MIN_DZ)   stickRightY = 0;
 
     // normalisasikan input dari -1.0 sampai dengan 1.0
-    float normalizedLeftX, normalizedLeftY, normalizedRightX = 0;
+    float normalizedLeftX  = 0;
+    float normalizedLeftY  = 0;
+    float normalizedRightX = 0;
 
     if(absLeftX > BOOST_DZ)  normalizedLeftX = (stickLeftX - (stickLeftX > 0 ? BOOST_DZ : -BOOST_DZ)) / (127.0f - BOOST_DZ);
     if(absLeftY > BOOST_DZ)  normalizedLeftY = (stickLeftY - (stickLeftY > 0 ? BOOST_DZ : -BOOST_DZ)) / (127.0f - BOOST_DZ);
