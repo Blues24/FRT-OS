@@ -1,7 +1,7 @@
 #ifndef RAGGEDYPINS_H
 #define RAGGEDYPINS_H
 
-#include <cstdlib>
+#include <cstdint>
 
 // @example posisi_motor[2] = {pin maju, pin mundur}
 const uint8_t FRONT_LEFT_MOTOR_PIN[2]  = {2, 0};
