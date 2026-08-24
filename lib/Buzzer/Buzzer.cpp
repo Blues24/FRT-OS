@@ -1,6 +1,43 @@
 #include "Buzzer.h"
 #include "RaggedyPins.h"
 
+// === Pola nada buzzer (frekuensi & durasi paralel) ===
+// Indeks i yang sama pada <name>Freqs[] dan <name>Durs[] membentuk satu nada.
+// Kapasitas dijaga < MAX_NOTES (16) sehingga muat di satu kali enqueue.
+
+// Startup: ascending ceria (C4 -> E4 -> G4 -> C5) ~610 ms total
+static const uint16_t startupFreqs[] = {
+    MusicalNotes::C4, MusicalNotes::E4, MusicalNotes::G4, MusicalNotes::C5
+};
+static const uint16_t startupDurs[]  = { 120, 120, 120, 250 };
+
+// Connected: konfirmasi tinggi cepat (G5 -> C6) ~250 ms total
+static const uint16_t connectFreqs[] = {
+    MusicalNotes::G5, MusicalNotes::C6
+};
+static const uint16_t connectDurs[]  = { 100, 150 };
+
+// Save Config: beep menurun (MID -> LOW) ~320 ms total
+static const uint16_t saveCfgFreqs[] = {
+    MusicalNotes::MID_BEEP, MusicalNotes::LOW_BEEP
+};
+static const uint16_t saveCfgDurs[]  = { 120, 200 };
+
+// Emergency: staccato berulang + nada panjang di akhir ~1.55 s total
+static const uint16_t emergencyFreqs[] = {
+    MusicalNotes::HIGH_BEEP, MusicalNotes::SILENCE,
+    MusicalNotes::HIGH_BEEP, MusicalNotes::SILENCE,
+    MusicalNotes::HIGH_BEEP, MusicalNotes::SILENCE,
+    MusicalNotes::HIGH_BEEP
+};
+static const uint16_t emergencyDurs[]  = { 150, 100, 150, 100, 150, 100, 800 };
+
+// Wifi Reset: 2x beep tinggi konfirmasi ~380 ms total
+static const uint16_t wifiRstFreqs[] = {
+    MusicalNotes::HIGH_BEEP, MusicalNotes::SILENCE, MusicalNotes::HIGH_BEEP
+};
+static const uint16_t wifiRstDurs[]  = { 100, 80, 200 };
+
 // Frekuensi default & resolusi LEDC untuk nada buzzer.
 static constexpr uint32_t DEFAULT_BUZZER_FREQ     = 2000;
 static constexpr uint8_t  LEDC_RESOLUTION         = 8;
@@ -77,55 +114,45 @@ void Buzzer::loopPlayNote(){
     }
 }
 
-// Nada startup (blocking/langsung) - Menggunakan namespace MusicalNotes
-// Alur: clear queue -> putar C5, jeda, E5, jeda, G5, lalu diam.
+// Helper internal: enqueue seluruh isi array (frekuensi, durasi) ke antrean nada.
+// Dipakai bersama oleh semua fungsi play* agar logikanya seragam.
+namespace {
+    template <size_t N>
+    void enqueuePattern(const uint16_t (&freqs)[N], const uint16_t (&durs)[N]){
+        for(size_t i = 0; i < N; ++i){
+            addNote(freqs[i], durs[i]);
+        }
+    }
+}
+
+// Nada startup: ascending ceria (C4 -> E4 -> G4 -> C5) via antrean.
 void Buzzer::playStartup(){
     clearNoteQueue();
-    ledcWriteTone(_pin, MusicalNotes::C5);
-    delay(100);
-    ledcWriteTone(_pin, MusicalNotes::SILENCE);
-    delay(50);
-    ledcWriteTone(_pin, MusicalNotes::E5);
-    delay(100);
-    ledcWriteTone(_pin, MusicalNotes::SILENCE);
-    delay(50);
-    ledcWriteTone(_pin, MusicalNotes::G5);
-    delay(200);
-    ledcWriteTone(_pin, MusicalNotes::SILENCE);
+    enqueuePattern(startupFreqs, startupDurs);
 }
 
-// 2x beep tinggi (non-blocking via queue)
-// Alur: clear queue -> masukkan HIGH, SILENCE, HIGH ke antrean.
+// Connected: konfirmasi tinggi singkat (G5 -> C6) via antrean.
 void Buzzer::playConnect(){
     clearNoteQueue();
-    addNote(MusicalNotes::HIGH_BEEP, 100);
-    addNote(MusicalNotes::SILENCE, 50);
-    addNote(MusicalNotes::HIGH_BEEP, 100);
+    enqueuePattern(connectFreqs, connectDurs);
 }
 
-// Beep turun (Simpan Konfigurasi)
-// Alur: clear queue -> masukkan MID, SILENCE, LOW ke antrean.
+// Save Config: beep menurun (MID -> LOW) via antrean.
 void Buzzer::playSaveConfig(){
     clearNoteQueue();
-    addNote(MusicalNotes::MID_BEEP, 100);
-    addNote(MusicalNotes::SILENCE, 50);
-    addNote(MusicalNotes::LOW_BEEP, 100);
+    enqueuePattern(saveCfgFreqs, saveCfgDurs);
 }
 
-// Tone panjang 5 detik
-// Alur: clear queue -> masukkan satu nada HIGH berdurasi 5000 ms.
+// Emergency: staccato berulang + nada panjang via antrean.
 void Buzzer::playEmergency(){
     clearNoteQueue();
-    addNote(MusicalNotes::HIGH_BEEP, 5000);
+    enqueuePattern(emergencyFreqs, emergencyDurs);
 }
 
-// 2x beep konfirmasi reset WiFi
-// Alur: clear queue -> masukkan HIGH, SILENCE, HIGH ke antrean.
+// Wifi Reset: 2x beep tinggi konfirmasi via antrean.
 void Buzzer::playWifiRst(){
     clearNoteQueue();
-    addNote(MusicalNotes::HIGH_BEEP, 100);
-    addNote(MusicalNotes::SILENCE, 100);
-    addNote(MusicalNotes::HIGH_BEEP, 100);
+    enqueuePattern(wifiRstFreqs, wifiRstDurs);
 }
 
 // Menghentikan semua nada dan mengosongkan antrean
