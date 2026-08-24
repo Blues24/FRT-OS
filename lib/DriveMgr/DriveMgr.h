@@ -14,6 +14,9 @@ static constexpr uint8_t MOTOR_IDX_BL = 2;
 static constexpr uint8_t MOTOR_IDX_BR = 3;
 static constexpr uint8_t MOTOR_COUNT = 4;
 
+// Static assertion to ensure MOTOR_COUNT is consistent with array sizes
+static_assert(MOTOR_COUNT == 4, "MOTOR_COUNT must be 4 for mecanum X-config");
+
 /**
  * Per-motor pin mapping.
  * - pinPWM_A / pinPWM_B : the two direction-input pins of the BTS7960
@@ -29,6 +32,10 @@ struct MotorPins
     int channel_A = -1;
     int channel_B = -1;
 };
+
+// Compile-time check: MotorPins must have all required fields
+static_assert(offsetof(MotorPins, pinPWM_A) == 0, "MotorPins pinPWM_A must be first field");
+static_assert(offsetof(MotorPins, pinPWM_B) == 1, "MotorPins pinPWM_B must be second field");
 
 class DriveMgr
 {
@@ -65,11 +72,26 @@ public:
      * Initialise LEDC channels for all 4 motors and zero their PWM.
      * Caller fills `pins[MOTOR_COUNT]` in order FL, FR, BL, BR using values
      * from the pin-map header. `freq` and `res` apply to all channels.
+     * @note After this call, all motors are at 0 speed.
      */
     void MotorInit(const MotorPins pins[MOTOR_COUNT],
                    uint32_t freq, uint8_t res);
 
+    /**
+     * Set power trim values for front-back and left-right imbalance.
+     * Values are clamped to ±0.5f — larger values would distort kinematics
+     * more than they compensate for mechanical imbalance.
+     * @param trim_frontback Positive values boost front motors, negative boost rear.
+     * @param trim_leftright Positive values boost right motors, negative boost left.
+     */
     void setPowerTrim(float trim_frontback, float trim_leftright);
+
+    /**
+     * Set gain multipliers for strafe and rotate axes.
+     * Clamped to [0.5f, 1.5f] range to prevent axis starvation and excessive torque bias.
+     * @param strafeGain Multiplier for strafe axis (sideways movement).
+     * @param rotateGain Multiplier for rotate axis (rotation).
+     */
     void setGainMultipliers(float strafeGain, float rotateGain);
 
     /**
@@ -84,13 +106,19 @@ public:
      *   - All four motors are written independently per kinematics; there
      *     is no "pair shortcut". The mecanum X-config formula naturally
      *     makes FL==FR and BL==BR when strafeX==0 (straight drive).
+     *   - Input values outside [-1, 1] may produce unexpected results;
+     *     caller is responsible for pre-processing.
      */
     void drive(float strafeX, float forwardY, float rotationX,
                int16_t baseSpeed);
 
     /**
      * Write `speed` (signed PWM units) to motor at `motorIdx`.
-     * Clamps internally to ±MAX_MOTOR_SPEED. Safe against INT16_MIN.
+     * Clamps internally to ±MAX_MOTOR_SPEED. Safe against INT16_MIN edge case.
+     * @param motorIdx Motor index [0..3], matching MOTOR_IDX_* constants.
+     * @param speed Signed PWM value; will be clamped to ±MAX_MOTOR_SPEED.
+     * @note Uses two's-complement-safe magnitude calculation to avoid
+     *       undefined behavior from abs(INT16_MIN).
      */
     void SetMotorSpeed(uint8_t motorIdx, int16_t speed);
 
@@ -98,6 +126,7 @@ public:
      * Hard cut to 0 on all channels. Resets lastMotorSpeeds[] to 0
      * so the next drive() call starts from a clean ramp baseline.
      * Bypasses the acceleration ramp — for estop / link-loss only.
+     * Also clears any pending coast request.
      */
     void emergencyStop();
 
@@ -105,6 +134,8 @@ public:
      * Smooth stop: requests target 0 and lets the existing acceleration
      * ramp (Task 4) bring lastMotorSpeeds[] down gradually.
      * Next drive() call with non-zero input will immediately override.
+     * If caller never invokes drive() again, motors will keep their
+     * last ramped value — by design.
      */
     void requestCoast();
 };

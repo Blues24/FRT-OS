@@ -51,7 +51,10 @@ void ControllerMgr::setCurve(float x1, float x2, float y1, float y2){
 
 void ControllerMgr::getDriveInput(float& leftStickX, float& leftStickY, float& rightStickX, int16_t& outSpeed){
     if(!isConnected()){
-        leftStickX, leftStickY, rightStickX, outSpeed = 0;
+        leftStickX = 0.0f;
+        leftStickY = 0.0f;
+        rightStickX = 0.0f;
+        outSpeed   = 0;
         return;
     }
 
