@@ -48,17 +48,30 @@ Buzzer& Buzzer::getBuzzerInstance(){
     return instance;
 }
 
-// Alur: inisialisasi semua member ke nilai nol/default (status diam).
+// Alur: inisialisasi semua member ke nol/default; mutex belum dibuat
+// (akan dibuat oleh init() di main thread).
 Buzzer::Buzzer()
-    : _pin(0), _noteQueueHead(0), _noteQueueTail(0),
-      _noteQueueCount(0), _noteStartTime(0), _playState{0, false} {}
+    : _pin(0), _channel(BUZZER_LEDC_CHANNEL),
+      _noteQueueHead(0), _noteQueueTail(0),
+      _noteQueueCount(0), _noteStartTime(0),
+      _playState{0, false}, _mutex(nullptr) {}
 
-// Alur: ambil pin BUZZER_PIN -> attach LEDC -> set nada diam.
+// Alur: ambil pin BUZZER_PIN -> buat mutex statis -> setup LEDC channel
+// -> attach pin ke channel -> set nada diam.
 void Buzzer::init(){
     _pin = BUZZER_PIN;
 
-    ledcAttach(_pin, DEFAULT_BUZZER_FREQ, LEDC_RESOLUTION);
-    ledcWriteTone(_pin, MusicalNotes::SILENCE);
+    // Mutex statis: alokasi buffer pada compile-time (StaticSemaphore_t),
+    // bukan heap runtime. Total ~96 byte, deterministik.
+    if (_mutex == nullptr) {
+        _mutex = xSemaphoreCreateMutexStatic(&_mutexBuffer);
+    }
+
+    // Core v2 API: ledcSetup + ledcAttachPin per pin,
+    //              ledcWrite/ledcWriteTone per channel.
+    ledcSetup(BUZZER_LEDC_CHANNEL, DEFAULT_BUZZER_FREQ, LEDC_RESOLUTION);
+    ledcAttachPin(_pin, BUZZER_LEDC_CHANNEL);
+    ledcWriteTone(BUZZER_LEDC_CHANNEL, MusicalNotes::SILENCE);
 }
 
 // Alur: kalau antrean penuh -> keluar. Kalau belum, tulis nada di head,
@@ -81,85 +94,111 @@ void Buzzer::clearNoteQueue(){
     _playState.duration   = 0;
     _playState.isPlaying  = false;
 
-    ledcWriteTone(_pin, MusicalNotes::SILENCE);
+    ledcWriteTone(BUZZER_LEDC_CHANNEL, MusicalNotes::SILENCE);
 }
 
 // Alur utama:
 // 1) Kalau sedang play & durasi sudah habis -> set diam, LEDC silence.
 // 2) Kalau sudah diam & antrean ada isinya -> ambil nada dari tail,
 //    geser tail, turunkan count, nyalakan nada baru, catat waktu mulai.
+//
+// Thread-safety: dipanggil hanya dari Core 1 task. Tidak perlu lock di
+// sini karena hanya 1 writer/reader untuk _noteQueue. Tapi untuk
+// konsistensi dengan callback PS3 yang bisa memanggil clearNoteQueue()
+// lewat playXxx(), kita lock mutex saat enqueue/dequeue.
 void Buzzer::loopPlayNote(){
     uint32_t current_time = millis();
 
     if(_playState.isPlaying){
         if(current_time - _noteStartTime >= _playState.duration){
             _playState.isPlaying = false;
-            ledcWriteTone(_pin, MusicalNotes::SILENCE);
+            ledcWriteTone(BUZZER_LEDC_CHANNEL, MusicalNotes::SILENCE);
         }
     }
 
     if (!_playState.isPlaying && _noteQueueCount > 0)
     {
-        ToneNote currentNote = _noteQueue[_noteQueueTail];
+        // Lock hanya saat dequeue karena playXxx() bisa enqueue dari
+        // core lain lewat callback PS3.
+        if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
+            ToneNote currentNote = _noteQueue[_noteQueueTail];
 
-        _noteQueueTail = (_noteQueueTail + 1) & MAX_NOTES_BITMASK;
-        _noteQueueCount--;
+            _noteQueueTail = (_noteQueueTail + 1) & MAX_NOTES_BITMASK;
+            _noteQueueCount--;
 
-        ledcWriteTone(_pin, currentNote.freq);
+            xSemaphoreGive(_mutex);
 
-        // Update kondisi pemutaran nada
-        _playState.duration = currentNote.duration;
-        _playState.isPlaying = true;
-        _noteStartTime = current_time;
+            ledcWriteTone(BUZZER_LEDC_CHANNEL, currentNote.freq);
+
+            // Update kondisi pemutaran nada
+            _playState.duration = currentNote.duration;
+            _playState.isPlaying = true;
+            _noteStartTime = current_time;
+        }
     }
 }
 
-// Helper internal: enqueue seluruh isi array (frekuensi, durasi) ke antrean nada.
-// Dipakai bersama oleh semua fungsi play* agar logikanya seragam.
-namespace {
-    template <size_t N>
-    void enqueuePattern(const uint16_t (&freqs)[N], const uint16_t (&durs)[N]){
-        for(size_t i = 0; i < N; ++i){
-            addNote(freqs[i], durs[i]);
-        }
+// Enqueue seluruh isi array (frekuensi, durasi) ke antrean nada (member method).
+void Buzzer::enqueuePattern(const uint16_t* freqs, const uint16_t* durs, uint8_t count){
+    Buzzer& instance = getBuzzerInstance();
+    for(uint8_t i = 0; i < count; ++i){
+        instance.addNote(freqs[i], durs[i]);
     }
 }
 
 // Nada startup: ascending ceria (C4 -> E4 -> G4 -> C5) via antrean.
 void Buzzer::playStartup(){
-    clearNoteQueue();
-    enqueuePattern(startupFreqs, startupDurs);
+    if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
+        clearNoteQueue();
+        enqueuePattern(startupFreqs, startupDurs, sizeof(startupFreqs)/sizeof(startupFreqs[0]));
+        xSemaphoreGive(_mutex);
+    }
 }
 
 // Connected: konfirmasi tinggi singkat (G5 -> C6) via antrean.
 void Buzzer::playConnect(){
-    clearNoteQueue();
-    enqueuePattern(connectFreqs, connectDurs);
+    if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
+        clearNoteQueue();
+        enqueuePattern(connectFreqs, connectDurs, sizeof(connectFreqs)/sizeof(connectFreqs[0]));
+        xSemaphoreGive(_mutex);
+    }
 }
 
 // Save Config: beep menurun (MID -> LOW) via antrean.
 void Buzzer::playSaveConfig(){
-    clearNoteQueue();
-    enqueuePattern(saveCfgFreqs, saveCfgDurs);
+    if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
+        clearNoteQueue();
+        enqueuePattern(saveCfgFreqs, saveCfgDurs, sizeof(saveCfgFreqs)/sizeof(saveCfgFreqs[0]));
+        xSemaphoreGive(_mutex);
+    }
 }
 
 // Emergency: staccato berulang + nada panjang via antrean.
 void Buzzer::playEmergency(){
-    clearNoteQueue();
-    enqueuePattern(emergencyFreqs, emergencyDurs);
+    if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
+        clearNoteQueue();
+        enqueuePattern(emergencyFreqs, emergencyDurs, sizeof(emergencyFreqs)/sizeof(emergencyFreqs[0]));
+        xSemaphoreGive(_mutex);
+    }
 }
 
 // Wifi Reset: 2x beep tinggi konfirmasi via antrean.
 void Buzzer::playWifiRst(){
-    clearNoteQueue();
-    enqueuePattern(wifiRstFreqs, wifiRstDurs);
+    if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
+        clearNoteQueue();
+        enqueuePattern(wifiRstFreqs, wifiRstDurs, sizeof(wifiRstFreqs)/sizeof(wifiRstFreqs[0]));
+        xSemaphoreGive(_mutex);
+    }
 }
 
 // Menghentikan semua nada dan mengosongkan antrean
 // Alur: clear queue -> paksa status diam lagi (idempotent) -> LEDC silence.
 void Buzzer::stop(){
-    clearNoteQueue();
-    _playState.isPlaying = false;
-    _playState.duration = 0;
-    ledcWriteTone(_pin, MusicalNotes::SILENCE);
+    if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
+        clearNoteQueue();
+        _playState.isPlaying = false;
+        _playState.duration = 0;
+        xSemaphoreGive(_mutex);
+    }
+    ledcWriteTone(BUZZER_LEDC_CHANNEL, MusicalNotes::SILENCE);
 }

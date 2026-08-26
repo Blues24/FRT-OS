@@ -15,18 +15,19 @@ void ControllerMgr::notifyUser(){
 }
 
 void ControllerMgr::onConnect(){
+    getInstance()._connectedCache.store(true, std::memory_order_release);
     Buzzer::getBuzzerInstance().playConnect();
     Serial.println("[INFO] PS3 Controller has been Connected!");
-    
 }
 
 void ControllerMgr::onDisconnect(){
+    getInstance()._connectedCache.store(false, std::memory_order_release);
     Buzzer::getBuzzerInstance().stop();
     Serial.println("[INFO] PS3 Controller has been Disconnected!");
-    
 }
 
 void ControllerMgr::initPs3(const char* mac){
+    _connectedCache.store(false, std::memory_order_relaxed);
     Ps3.attach(notifyUser);
     Ps3.attachOnConnect(onConnect);
     Ps3.attachOnDisconnect(onDisconnect);
@@ -34,7 +35,7 @@ void ControllerMgr::initPs3(const char* mac){
 }
 
 bool ControllerMgr::isConnected(){
-    return Ps3.isConnected();
+    return _connectedCache.load(std::memory_order_acquire);
 }
 
 int ControllerMgr::getBatteryLevel(){
