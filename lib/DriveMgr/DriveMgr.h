@@ -138,6 +138,9 @@ public:
      * last ramped value — by design.
      */
     void requestCoast();
+
+    // Reinitialize motor pins at runtime (thread-safe, pauses drive loop briefly)
+    bool reinitPins(const MotorPins pins[MOTOR_COUNT], uint32_t freq, uint8_t res);
 };
 
 #endif // DRIVEMGR_H

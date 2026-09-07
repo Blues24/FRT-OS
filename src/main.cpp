@@ -30,6 +30,7 @@
 #include "WSMgr.h"
 #include "ServoMgr.h"
 #include "Gripper.h"
+#include "PinConfig.h"
 
 // ============================================================================
 // Konfigurasi Task: Priorities & Stacks
@@ -160,15 +161,19 @@ void setup() {
     Serial.println();
     Serial.println("[BOOT] FRT-OS starting...");
 
+    // ---- Load pin config from NVS (or defaults from RaggedyPins.h) ----
+    PinConfig pinCfg = PinConfigMgr::getInstance().load();
+    Serial.println("[BOOT] Pin config loaded from NVS.");
+
     // ---- Buzzer (Core 1 - di-init di main, diakses dari kedua core) ----
     buzzer.init();
 
     // ---- Motor (LEDC via core v2 API) ----
     {
-        MotorPins fl; fl.pinPWM_A = FRONT_LEFT_MOTOR_PIN[0];  fl.pinPWM_B = FRONT_LEFT_MOTOR_PIN[1];  MOTOR_PINS[MOTOR_IDX_FL] = fl;
-        MotorPins fr; fr.pinPWM_A = FRONT_RIGHT_MOTOR_PIN[0]; fr.pinPWM_B = FRONT_RIGHT_MOTOR_PIN[1]; MOTOR_PINS[MOTOR_IDX_FR] = fr;
-        MotorPins bl; bl.pinPWM_A = BACK_LEFT_MOTOR_PIN[0];   bl.pinPWM_B = BACK_LEFT_MOTOR_PIN[1];   MOTOR_PINS[MOTOR_IDX_BL] = bl;
-        MotorPins br; br.pinPWM_A = BACK_RIGHT_MOTOR_PIN[0];  br.pinPWM_B = BACK_RIGHT_MOTOR_PIN[1];  MOTOR_PINS[MOTOR_IDX_BR] = br;
+        MotorPins fl; fl.pinPWM_A = pinCfg.motors.fl_a;  fl.pinPWM_B = pinCfg.motors.fl_b;  MOTOR_PINS[MOTOR_IDX_FL] = fl;
+        MotorPins fr; fr.pinPWM_A = pinCfg.motors.fr_a; fr.pinPWM_B = pinCfg.motors.fr_b; MOTOR_PINS[MOTOR_IDX_FR] = fr;
+        MotorPins bl; bl.pinPWM_A = pinCfg.motors.bl_a;   bl.pinPWM_B = pinCfg.motors.bl_b;   MOTOR_PINS[MOTOR_IDX_BL] = bl;
+        MotorPins br; br.pinPWM_A = pinCfg.motors.br_a;  br.pinPWM_B = pinCfg.motors.br_b;  MOTOR_PINS[MOTOR_IDX_BR] = br;
     }
 
     drive.MotorInit(MOTOR_PINS, MOTOR_PWM_FREQ, MOTOR_PWM_RES);
@@ -176,6 +181,8 @@ void setup() {
 
     // ---- Servo + Gripper ----
     servoInit();
+    // Override servo pins from saved config
+    servoReinitPins(pinCfg.servos.pins);
     Serial.println("[BOOT] ServoMgr init done.");
 
     // ---- WiFi AP (Core 0) ----

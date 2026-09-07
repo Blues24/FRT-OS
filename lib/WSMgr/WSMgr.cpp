@@ -1,5 +1,7 @@
 #include "WSMgr.h"
 #include "ServoMgr.h"
+#include "PinConfig.h"
+#include "DriveMgr.h"
 
 static const char UI_INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
@@ -272,6 +274,7 @@ static const char UI_INDEX_HTML[] PROGMEM = R"rawliteral(
             <button onclick="switchTab('servo')">Servo</button>
             <button onclick="switchTab('joystick')">Joystick</button>
             <button onclick="switchTab('motor')">Motor</button>
+            <button onclick="switchTab('pins')">Pin Config</button>
             <button onclick="switchTab('oled')">OLED</button>
             <button onclick="switchTab('wifi')">WiFi</button>
             <button onclick="switchTab('about')">About</button>
@@ -535,6 +538,91 @@ static const char UI_INDEX_HTML[] PROGMEM = R"rawliteral(
             </div>
         </section>
 
+        <!-- Pin Config Tab -->
+        <section id="tab-pins" class="tab-content">
+            <div class="card">
+                <h2>Konfigurasi Pin Motor & Servo</h2>
+                <p style="font-size: 12px; color: #888; margin-bottom: 16px;">
+                    Ubah pin GPIO untuk motor dan servo. Perubahan diterapkan langsung tanpa reboot.
+                    Pin 34-39 hanya input, tidak bisa dipakai untuk output.
+                </p>
+
+                <div class="section-box">
+                    <h3>Motor Pins (FL, FR, BL, BR — masing-masing 2 pin: A=maju, B=mundur)</h3>
+                    <div class="grid-4">
+                        <div class="form-row">
+                            <label>FL Pin A</label>
+                            <input type="number" id="pin_fl_a" min="0" max="39" value="2">
+                        </div>
+                        <div class="form-row">
+                            <label>FL Pin B</label>
+                            <input type="number" id="pin_fl_b" min="0" max="39" value="0">
+                        </div>
+                        <div class="form-row">
+                            <label>FR Pin A</label>
+                            <input type="number" id="pin_fr_a" min="0" max="39" value="17">
+                        </div>
+                        <div class="form-row">
+                            <label>FR Pin B</label>
+                            <input type="number" id="pin_fr_b" min="0" max="39" value="5">
+                        </div>
+                        <div class="form-row">
+                            <label>BL Pin A</label>
+                            <input type="number" id="pin_bl_a" min="0" max="39" value="4">
+                        </div>
+                        <div class="form-row">
+                            <label>BL Pin B</label>
+                            <input type="number" id="pin_bl_b" min="0" max="39" value="16">
+                        </div>
+                        <div class="form-row">
+                            <label>BR Pin A</label>
+                            <input type="number" id="pin_br_a" min="0" max="39" value="18">
+                        </div>
+                        <div class="form-row">
+                            <label>BR Pin B</label>
+                            <input type="number" id="pin_br_b" min="0" max="39" value="19">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-box">
+                    <h3>Servo Pins (6 servo: Grip1 Big, Small1, Small2, Grip2 Big, Small1, Small2)</h3>
+                    <div class="grid-3">
+                        <div class="form-row">
+                            <label>Servo 0 (Grip1 Big)</label>
+                            <input type="number" id="pin_servo_0" min="0" max="39" value="14">
+                        </div>
+                        <div class="form-row">
+                            <label>Servo 1 (Grip1 Small1)</label>
+                            <input type="number" id="pin_servo_1" min="0" max="39" value="13">
+                        </div>
+                        <div class="form-row">
+                            <label>Servo 2 (Grip1 Small2)</label>
+                            <input type="number" id="pin_servo_2" min="0" max="39" value="12">
+                        </div>
+                        <div class="form-row">
+                            <label>Servo 3 (Grip2 Big)</label>
+                            <input type="number" id="pin_servo_3" min="0" max="39" value="27">
+                        </div>
+                        <div class="form-row">
+                            <label>Servo 4 (Grip2 Small1)</label>
+                            <input type="number" id="pin_servo_4" min="0" max="39" value="25">
+                        </div>
+                        <div class="form-row">
+                            <label>Servo 5 (Grip2 Small2)</label>
+                            <input type="number" id="pin_servo_5" min="0" max="39" value="26">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn" onclick="loadPins()">Load Current</button>
+                    <button class="btn" onclick="loadDefaultPins()">Load Defaults</button>
+                    <button class="btn-primary" onclick="savePins()">Save & Apply</button>
+                </div>
+            </div>
+        </section>
+
         <!-- OLED Tab -->
         <section id="tab-oled" class="tab-content">
             <div class="card">
@@ -742,6 +830,93 @@ static const char UI_INDEX_HTML[] PROGMEM = R"rawliteral(
             sendCmd('wifi save ' + mode + ' "' + ssid + '" "' + pass + '" "' + mac + '"');
             showToast('Pengaturan WiFi tersimpan');
         }
+
+        // Pin Config functions
+        function loadPins() {
+            fetch('/api/pins')
+                .then(response => response.json())
+                .then(data => {
+                    // Motor pins
+                    document.getElementById('pin_fl_a').value = data.motors.fl_a;
+                    document.getElementById('pin_fl_b').value = data.motors.fl_b;
+                    document.getElementById('pin_fr_a').value = data.motors.fr_a;
+                    document.getElementById('pin_fr_b').value = data.motors.fr_b;
+                    document.getElementById('pin_bl_a').value = data.motors.bl_a;
+                    document.getElementById('pin_bl_b').value = data.motors.bl_b;
+                    document.getElementById('pin_br_a').value = data.motors.br_a;
+                    document.getElementById('pin_br_b').value = data.motors.br_b;
+                    // Servo pins
+                    for (var i = 0; i < 6; i++) {
+                        document.getElementById('pin_servo_' + i).value = data.servos[i];
+                    }
+                    showToast('Pin config loaded');
+                })
+                .catch(err => {
+                    console.error(err);
+                    showToast('Failed to load pins');
+                });
+        }
+
+        function loadDefaultPins() {
+            // Defaults from RaggedyPins.h
+            document.getElementById('pin_fl_a').value = 2;
+            document.getElementById('pin_fl_b').value = 0;
+            document.getElementById('pin_fr_a').value = 17;
+            document.getElementById('pin_fr_b').value = 5;
+            document.getElementById('pin_bl_a').value = 4;
+            document.getElementById('pin_bl_b').value = 16;
+            document.getElementById('pin_br_a').value = 18;
+            document.getElementById('pin_br_b').value = 19;
+            document.getElementById('pin_servo_0').value = 14;
+            document.getElementById('pin_servo_1').value = 13;
+            document.getElementById('pin_servo_2').value = 12;
+            document.getElementById('pin_servo_3').value = 27;
+            document.getElementById('pin_servo_4').value = 25;
+            document.getElementById('pin_servo_5').value = 26;
+            showToast('Default pins loaded');
+        }
+
+        function savePins() {
+            var data = {
+                motors: {
+                    fl_a: parseInt(document.getElementById('pin_fl_a').value),
+                    fl_b: parseInt(document.getElementById('pin_fl_b').value),
+                    fr_a: parseInt(document.getElementById('pin_fr_a').value),
+                    fr_b: parseInt(document.getElementById('pin_fr_b').value),
+                    bl_a: parseInt(document.getElementById('pin_bl_a').value),
+                    bl_b: parseInt(document.getElementById('pin_bl_b').value),
+                    br_a: parseInt(document.getElementById('pin_br_a').value),
+                    br_b: parseInt(document.getElementById('pin_br_b').value)
+                },
+                servos: [
+                    parseInt(document.getElementById('pin_servo_0').value),
+                    parseInt(document.getElementById('pin_servo_1').value),
+                    parseInt(document.getElementById('pin_servo_2').value),
+                    parseInt(document.getElementById('pin_servo_3').value),
+                    parseInt(document.getElementById('pin_servo_4').value),
+                    parseInt(document.getElementById('pin_servo_5').value)
+                ]
+            };
+
+            var jsonStr = JSON.stringify(data);
+            fetch('/api/pins', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'data=' + encodeURIComponent(jsonStr)
+            })
+            .then(response => response.text())
+            .then(text => {
+                if (text === 'ok') {
+                    showToast('Pin config saved & applied');
+                } else {
+                    showToast('Error: ' + text);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                showToast('Failed to save pins');
+            });
+        }
     </script>
 </body>
 </html>
@@ -794,6 +969,106 @@ static void handleCommand(AsyncWebServerRequest* request) {
     request->send(200, "text/plain", "ok");
 }
 
+void handlePinsGet(AsyncWebServerRequest* request) {
+    PinConfig cfg = PinConfigMgr::getInstance().load();
+    
+    String json = "{";
+    json += "\"motors\":{\"fl_a\":" + String(cfg.motors.fl_a) + ",\"fl_b\":" + String(cfg.motors.fl_b) + 
+            ",\"fr_a\":" + String(cfg.motors.fr_a) + ",\"fr_b\":" + String(cfg.motors.fr_b) +
+            ",\"bl_a\":" + String(cfg.motors.bl_a) + ",\"bl_b\":" + String(cfg.motors.bl_b) +
+            ",\"br_a\":" + String(cfg.motors.br_a) + ",\"br_b\":" + String(cfg.motors.br_b) + "}";
+    json += ",\"servos\":[";
+    for (int i = 0; i < 6; i++) {
+        json += String(cfg.servos.pins[i]);
+        if (i < 5) json += ",";
+    }
+    json += "]}";
+    
+    request->send(200, "application/json", json);
+}
+
+void handlePinsPost(AsyncWebServerRequest* request) {
+    if (!request->hasParam("data", true)) {
+        request->send(400, "text/plain", "missing data");
+        return;
+    }
+    
+    String body = request->getParam("data", true)->value();
+    
+    // Simple JSON parsing for our known structure
+    PinConfig cfg;
+    
+    // Parse motor pins
+    auto extractInt = [&](const String& str, const char* key, int defVal) -> int {
+        int idx = str.indexOf(key);
+        if (idx < 0) return defVal;
+        idx = str.indexOf(':', idx);
+        if (idx < 0) return defVal;
+        idx++;
+        while (idx < str.length() && (str[idx] == ' ' || str[idx] == '\t')) idx++;
+        int val = 0;
+        bool neg = false;
+        if (str[idx] == '-') { neg = true; idx++; }
+        while (idx < str.length() && isDigit(str[idx])) {
+            val = val * 10 + (str[idx] - '0');
+            idx++;
+        }
+        return neg ? -val : val;
+    };
+    
+    cfg.motors.fl_a = extractInt(body, "\"fl_a\"", cfg.motors.fl_a);
+    cfg.motors.fl_b = extractInt(body, "\"fl_b\"", cfg.motors.fl_b);
+    cfg.motors.fr_a = extractInt(body, "\"fr_a\"", cfg.motors.fr_a);
+    cfg.motors.fr_b = extractInt(body, "\"fr_b\"", cfg.motors.fr_b);
+    cfg.motors.bl_a = extractInt(body, "\"bl_a\"", cfg.motors.bl_a);
+    cfg.motors.bl_b = extractInt(body, "\"bl_b\"", cfg.motors.bl_b);
+    cfg.motors.br_a = extractInt(body, "\"br_a\"", cfg.motors.br_a);
+    cfg.motors.br_b = extractInt(body, "\"br_b\"", cfg.motors.br_b);
+    
+    // Parse servo pins array
+    int servoIdx = body.indexOf("\"servos\"");
+    if (servoIdx >= 0) {
+        servoIdx = body.indexOf('[', servoIdx);
+        if (servoIdx >= 0) {
+            servoIdx++;
+            for (int i = 0; i < 6; i++) {
+                while (servoIdx < body.length() && (body[servoIdx] == ' ' || body[servoIdx] == '\t' || body[servoIdx] == ',')) servoIdx++;
+                int val = 0;
+                while (servoIdx < body.length() && isDigit(body[servoIdx])) {
+                    val = val * 10 + (body[servoIdx] - '0');
+                    servoIdx++;
+                }
+                cfg.servos.pins[i] = val;
+            }
+        }
+    }
+    
+    // Validate
+    String errorMsg;
+    if (!PinConfigMgr::getInstance().validate(cfg, errorMsg)) {
+        request->send(400, "text/plain", errorMsg);
+        return;
+    }
+    
+    // Apply to hardware
+    MotorPins motorPins[MOTOR_COUNT];
+    motorPins[MOTOR_IDX_FL] = {cfg.motors.fl_a, cfg.motors.fl_b};
+    motorPins[MOTOR_IDX_FR] = {cfg.motors.fr_a, cfg.motors.fr_b};
+    motorPins[MOTOR_IDX_BL] = {cfg.motors.bl_a, cfg.motors.bl_b};
+    motorPins[MOTOR_IDX_BR] = {cfg.motors.br_a, cfg.motors.br_b};
+    
+    bool ok = true;
+    ok &= drive.reinitPins(motorPins, 10000, 8);
+    ok &= servoReinitPins(cfg.servos.pins);
+    
+    if (ok) {
+        PinConfigMgr::getInstance().save(cfg);
+        request->send(200, "text/plain", "ok");
+    } else {
+        request->send(500, "text/plain", "hardware reinit failed");
+    }
+}
+
 void wsMgrBegin() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
         request->send(200, "text/html", UI_INDEX_HTML);
@@ -802,6 +1077,9 @@ void wsMgrBegin() {
     server.on("/command", HTTP_GET, [](AsyncWebServerRequest* request) {
         handleCommand(request);
     });
+
+    server.on("/api/pins", HTTP_GET, handlePinsGet);
+    server.on("/api/pins", HTTP_POST, handlePinsPost);
 
     server.begin();
 }

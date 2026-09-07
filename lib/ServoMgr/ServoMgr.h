@@ -16,6 +16,9 @@ enum ServoID {
 
 void servoInit();
 
+// Reinitialize servo pins at runtime
+bool servoReinitPins(const uint8_t pins[SERVO_COUNT]);
+
 Gripper& servoGet(int index);
 
 void servoOpenAll();

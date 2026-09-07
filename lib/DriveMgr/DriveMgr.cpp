@@ -13,6 +13,11 @@ const int16_t MAX_MOTOR_SPEED = 255;
 const float ACCEL_LIMIT = 80.0f;
 
 // ============================================================================
+// Mutex for thread-safe runtime pin reinit
+// ============================================================================
+static SemaphoreHandle_t driveMutex = nullptr;
+
+// ============================================================================
 // PWM channel tracking — one channel per motor direction pin pair.
 // With core v2 API: ledcSetup + ledcAttachPin per pin, ledcWrite per channel.
 // ============================================================================
@@ -35,6 +40,11 @@ static constexpr uint8_t CHANNEL_BR_B = 7;
 void DriveMgr::MotorInit(const MotorPins pins[MOTOR_COUNT],
                          uint32_t freq, uint8_t res)
 {
+    // Initialize mutex for thread-safe reinit
+    if (!driveMutex) {
+        driveMutex = xSemaphoreCreateMutex();
+    }
+    
     // Configure all PWM channels once.
     ledcSetup(CHANNEL_FL_A, freq, res);
     ledcSetup(CHANNEL_FL_B, freq, res);
@@ -379,4 +389,65 @@ void DriveMgr::drive(float strafeX, float forwardY, float rotationX,
         // 0.5..1.5 gain, baseSpeed ≤ MAX_MOTOR_SPEED).
         SetMotorSpeed(i, static_cast<int16_t>(lastMotorSpeeds[i]));
     }
+}
+
+// ============================================================================
+// reinitPins — reinitialize motor pins at runtime (thread-safe)
+// ============================================================================
+bool DriveMgr::reinitPins(const MotorPins pins[MOTOR_COUNT], uint32_t freq, uint8_t res)
+{
+    if (!driveMutex) return false;
+    
+    // Take mutex with timeout to avoid deadlock
+    if (xSemaphoreTake(driveMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return false;
+    }
+    
+    // Stop all motors first (emergency stop bypasses ramp)
+    emergencyStop();
+    
+    // Reconfigure PWM channels with new frequency/resolution if changed
+    if (freq != _pwmFreq || res != _pwmRes) {
+        ledcSetup(CHANNEL_FL_A, freq, res);
+        ledcSetup(CHANNEL_FL_B, freq, res);
+        ledcSetup(CHANNEL_FR_A, freq, res);
+        ledcSetup(CHANNEL_FR_B, freq, res);
+        ledcSetup(CHANNEL_BL_A, freq, res);
+        ledcSetup(CHANNEL_BL_B, freq, res);
+        ledcSetup(CHANNEL_BR_A, freq, res);
+        ledcSetup(CHANNEL_BR_B, freq, res);
+        _pwmFreq = freq;
+        _pwmRes = res;
+    }
+    
+    // Detach old pins and attach new ones
+    ledcDetachPin(motorPins[MOTOR_IDX_FL].pinPWM_A);
+    ledcDetachPin(motorPins[MOTOR_IDX_FL].pinPWM_B);
+    ledcDetachPin(motorPins[MOTOR_IDX_FR].pinPWM_A);
+    ledcDetachPin(motorPins[MOTOR_IDX_FR].pinPWM_B);
+    ledcDetachPin(motorPins[MOTOR_IDX_BL].pinPWM_A);
+    ledcDetachPin(motorPins[MOTOR_IDX_BL].pinPWM_B);
+    ledcDetachPin(motorPins[MOTOR_IDX_BR].pinPWM_A);
+    ledcDetachPin(motorPins[MOTOR_IDX_BR].pinPWM_B);
+    
+    // Attach new pins
+    ledcAttachPin(pins[MOTOR_IDX_FL].pinPWM_A, CHANNEL_FL_A);
+    ledcAttachPin(pins[MOTOR_IDX_FL].pinPWM_B, CHANNEL_FL_B);
+    ledcAttachPin(pins[MOTOR_IDX_FR].pinPWM_A, CHANNEL_FR_A);
+    ledcAttachPin(pins[MOTOR_IDX_FR].pinPWM_B, CHANNEL_FR_B);
+    ledcAttachPin(pins[MOTOR_IDX_BL].pinPWM_A, CHANNEL_BL_A);
+    ledcAttachPin(pins[MOTOR_IDX_BL].pinPWM_B, CHANNEL_BL_B);
+    ledcAttachPin(pins[MOTOR_IDX_BR].pinPWM_A, CHANNEL_BR_A);
+    ledcAttachPin(pins[MOTOR_IDX_BR].pinPWM_B, CHANNEL_BR_B);
+    
+    // Update internal pin table
+    memcpy(motorPins, pins, sizeof(MotorPins) * MOTOR_COUNT);
+    
+    // Reset cached speeds to zero
+    for (uint8_t i = 0; i < MOTOR_COUNT; i++) {
+        lastMotorSpeeds[i] = 0.0f;
+    }
+    
+    xSemaphoreGive(driveMutex);
+    return true;
 }
