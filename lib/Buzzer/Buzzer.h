@@ -23,6 +23,7 @@
 #define BUZZER_H
 
 #include <Arduino.h>
+#include <freertos/semphr.h>
 
 /**
  * @namespace MusicalNotes
@@ -235,9 +236,33 @@ class Buzzer {
 
     private:
         uint8_t _pin;  //< Nomor pin GPIO yang digunakan untuk buzzer.
+        uint8_t _channel;  ///< Nomor channel LEDC (core v2: dipakai untuk ledcWriteTone/ledcWrite).
 
         static constexpr uint8_t MAX_NOTES = 16;          //< Kapasitas maksimum antrean nada (16 entri).
         static constexpr uint8_t MAX_NOTES_BITMASK = 0xF;  ///< Bitmask 4-bit (0b1111) untuk operasi modulo kelipatan 16.
+
+        /**
+         * @brief Channel LEDC yang dipakai untuk buzzer (core v2 API).
+         *
+         * Dipakai bersama oleh @ref init, @ref loopPlayNote, dan
+         * pemutaran nada langsung (ledcWriteTone). Dipilih 7 supaya
+         * tidak konflik dengan channel motor DriveMgr (0..7 untuk 4 motor).
+         */
+        static constexpr uint8_t BUZZER_LEDC_CHANNEL = 7;
+
+        /**
+         * @brief Mutex FreeRTOS untuk thread-safety akses Buzzer.
+         *
+         * Buzzer diakses dari callback PS3 (BT task - core manapun) dan
+         * dari task hardware Core 1. Tanpa mutex, akses ring buffer
+         * @ref _noteQueue bisa korup saat preemption.
+         *
+         * Implementasi: `xSemaphoreCreateMutexStatic` agar alokasi
+         * buffer mutex dilakukan pada compile-time / init-time, bukan
+         * heap runtime (deterministik, total ~96 byte).
+         */
+        SemaphoreHandle_t _mutex;
+        StaticSemaphore_t _mutexBuffer;
 
         /**
          * @brief Konstruktor privat (Singleton).
@@ -296,6 +321,11 @@ class Buzzer {
          *       diputar saat @ref loopPlayNote memproses antrean.
          */
         void addNote(uint16_t noteFreq, uint16_t noteDuration);
+
+        /**
+         * @brief Enqueue pola nada dari array frekuensi & durasi paralel (internal).
+         */
+        static void enqueuePattern(const uint16_t* freqs, const uint16_t* durs, uint8_t count);
 
         /**
          * @brief Mengosongkan antrean nada dan mereset status pemutaran (internal).

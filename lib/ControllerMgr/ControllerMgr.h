@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <cmath>
+#include <atomic>
 #include <Ps3Controller.h>
 
 /**
@@ -49,6 +50,9 @@ enum class ButtonPress{
 
 class ControllerMgr {
     private:
+        // Cache atomic status koneksi PS3 (thread-safe untuk multi-core).
+        std::atomic<bool> _connectedCache{false};
+
         // Constructor Kelas ControllerMgr
         ControllerMgr();
         // ---- Konstanta tuning drive ----

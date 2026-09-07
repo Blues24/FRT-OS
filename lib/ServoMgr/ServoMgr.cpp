@@ -1,8 +1,20 @@
 #include "ServoMgr.h"
 #include "RaggedyPins.h"
+#include "Gripper.h"
+
+// Default servo pins from RaggedyPins.h
+static const uint8_t DEFAULT_SERVO_PINS[SERVO_COUNT] = {
+    FRONT_LEFT_GRIPPER_PIN,   // 14
+    FRONT_MIDDLE_SERVO,       // 13
+    FRONT_RIGHT_GRIPPER_PIN,  // 12
+    BACK_MIDDLE_SERVO,        // 27
+    BACK_LEFT_GRIPER_PIN,     // 25
+    BACK_RIGHT_GRIPPER_PIN    // 26
+};
 
 // Array untuk menyimpan 6 struct Gripper
 static Gripper grippers[SERVO_COUNT];
+static uint8_t currentServoPins[SERVO_COUNT];
 
 // Fungsi bantuan untuk memeriksa apakah nomor index (0 - 5) valid
 static bool isValidIndex(int index) {
@@ -26,7 +38,8 @@ static int unitOffset(int unit) {
 // Inisialisasi semua 6 servo dengan pin masing-masing
 void servoInit() {
     for (int i = 0; i < SERVO_COUNT; i++) {
-        gripperInit(grippers[i], GRIPPER_PINS[i]);
+        currentServoPins[i] = DEFAULT_SERVO_PINS[i];
+        gripperInit(grippers[i], DEFAULT_SERVO_PINS[i]);
     }
 }
 
@@ -147,4 +160,16 @@ bool servoIsOpen(int index) {
         return gripperIsOpen(grippers[index]);
     }
     return false;
+}
+
+// Reinitialize servo pins at runtime
+bool servoReinitPins(const uint8_t pins[SERVO_COUNT]) {
+    for (int i = 0; i < SERVO_COUNT; i++) {
+        if (gripperIsValid(grippers[i])) {
+            grippers[i].servo.detach();
+        }
+        gripperInit(grippers[i], pins[i]);
+        currentServoPins[i] = pins[i];
+    }
+    return true;
 }
