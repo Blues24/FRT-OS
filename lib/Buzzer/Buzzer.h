@@ -245,10 +245,10 @@ class Buzzer {
          * @brief Channel LEDC yang dipakai untuk buzzer (core v2 API).
          *
          * Dipakai bersama oleh @ref init, @ref loopPlayNote, dan
-         * pemutaran nada langsung (ledcWriteTone). Dipilih 7 supaya
+         * pemutaran nada langsung (ledcWriteTone). Dipilih 8 supaya
          * tidak konflik dengan channel motor DriveMgr (0..7 untuk 4 motor).
          */
-        static constexpr uint8_t BUZZER_LEDC_CHANNEL = 7;
+        static constexpr uint8_t BUZZER_LEDC_CHANNEL = 8;
 
         /**
          * @brief Mutex FreeRTOS untuk thread-safety akses Buzzer.

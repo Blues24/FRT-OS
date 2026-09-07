@@ -98,45 +98,44 @@ void Buzzer::clearNoteQueue(){
 }
 
 // Alur utama:
-// 1) Kalau sedang play & durasi sudah habis -> set diam, LEDC silence.
-// 2) Kalau sudah diam & antrean ada isinya -> ambil nada dari tail,
-//    geser tail, turunkan count, nyalakan nada baru, catat waktu mulai.
-//
-// Thread-safety: dipanggil hanya dari Core 1 task. Tidak perlu lock di
-// sini karena hanya 1 writer/reader untuk _noteQueue. Tapi untuk
-// konsistensi dengan callback PS3 yang bisa memanggil clearNoteQueue()
-// lewat playXxx(), kita lock mutex saat enqueue/dequeue.
-void Buzzer::loopPlayNote(){
-    uint32_t current_time = millis();
-
-    if(_playState.isPlaying){
-        if(current_time - _noteStartTime >= _playState.duration){
-            _playState.isPlaying = false;
-            ledcWriteTone(BUZZER_LEDC_CHANNEL, MusicalNotes::SILENCE);
-        }
-    }
-
-    if (!_playState.isPlaying && _noteQueueCount > 0)
-    {
-        // Lock hanya saat dequeue karena playXxx() bisa enqueue dari
-        // core lain lewat callback PS3.
-        if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
-            ToneNote currentNote = _noteQueue[_noteQueueTail];
-
-            _noteQueueTail = (_noteQueueTail + 1) & MAX_NOTES_BITMASK;
-            _noteQueueCount--;
-
-            xSemaphoreGive(_mutex);
-
-            ledcWriteTone(BUZZER_LEDC_CHANNEL, currentNote.freq);
-
-            // Update kondisi pemutaran nada
-            _playState.duration = currentNote.duration;
-            _playState.isPlaying = true;
-            _noteStartTime = current_time;
-        }
-    }
-}
+ // 1) Kalau sedang play & durasi sudah habis -> set diam, LEDC silence.
+ // 2) Kalau sudah diam & antrean ada isinya -> ambil nada dari tail,
+ //    geser tail, turunkan count, nyalakan nada baru, catat waktu mulai.
+ //
+ // Thread-safety: dipanggil hanya dari Core 1 task. Tidak perlu lock di
+ // sini karena hanya 1 writer/reader untuk _noteQueue. Tapi untuk
+ // konsistensi dengan callback PS3 yang bisa memanggil clearNoteQueue()
+ // lewat playXxx(), kita lock mutex saat enqueue/dequeue.
+ void Buzzer::loopPlayNote(){
+     uint32_t current_time = millis();
+ 
+     if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
+         if(_playState.isPlaying){
+             if(current_time - _noteStartTime >= _playState.duration){
+                 _playState.isPlaying = false;
+                 ledcWriteTone(BUZZER_LEDC_CHANNEL, MusicalNotes::SILENCE);
+             }
+         }
+ 
+         if (!_playState.isPlaying && _noteQueueCount > 0)
+         {
+             // Lock hanya saat dequeue karena playXxx() bisa enqueue dari
+             // core lain lewat callback PS3.
+             ToneNote currentNote = _noteQueue[_noteQueueTail];
+ 
+             _noteQueueTail = (_noteQueueTail + 1) & MAX_NOTES_BITMASK;
+             _noteQueueCount--;
+ 
+             ledcWriteTone(BUZZER_LEDC_CHANNEL, currentNote.freq);
+ 
+             // Update kondisi pemutaran nada
+             _playState.duration = currentNote.duration;
+             _playState.isPlaying = true;
+             _noteStartTime = current_time;
+         }
+         xSemaphoreGive(_mutex);
+     }
+ }
 
 // Enqueue seluruh isi array (frekuensi, durasi) ke antrean nada (member method).
 void Buzzer::enqueuePattern(const uint16_t* freqs, const uint16_t* durs, uint8_t count){

@@ -65,6 +65,13 @@ void DriveMgr::MotorInit(const MotorPins pins[MOTOR_COUNT],
     ledcAttachPin(pins[MOTOR_IDX_BR].pinPWM_A, CHANNEL_BR_A);
     ledcAttachPin(pins[MOTOR_IDX_BR].pinPWM_B, CHANNEL_BR_B);
 
+    // Copy initial pin table to motorPins member BEFORE any runtime updates
+    memcpy(motorPins, pins, sizeof(MotorPins) * MOTOR_COUNT);
+
+    // Initialize cached PWM config
+    _pwmFreq = freq;
+    _pwmRes = res;
+
     // Reset trim/gain to defaults (setters will clamp on first use).
     trim_fb = 0.0f;
     trim_lr = 0.0f;
@@ -76,6 +83,19 @@ void DriveMgr::MotorInit(const MotorPins pins[MOTOR_COUNT],
     {
         lastMotorSpeeds[i] = 0.0f;
     }
+}
+
+// ============================================================================
+// Internal locked helper — all drive-state + LEDC writes under one mutex
+// ============================================================================
+static inline bool driveLocked(const std::function<void()>& fn) {
+    if (!driveMutex) return false;
+    if (xSemaphoreTake(driveMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return false;
+    }
+    fn();
+    xSemaphoreGive(driveMutex);
+    return true;
 }
 
 // ============================================================================
@@ -149,25 +169,27 @@ void DriveMgr::SetMotorSpeed(uint8_t motorIdx, int16_t speed)
 // ============================================================================
 void DriveMgr::emergencyStop()
 {
-    // Clear any pending coast request so the next drive() call behaves
-    // normally (does not get stuck forcing 0).
-    _coastRequested = false;
+    driveLocked([&](){
+        // Clear any pending coast request so the next drive() call behaves
+        // normally (does not get stuck forcing 0).
+        _coastRequested = false;
 
-    // Write 0 to all PWM channels.
-    ledcWrite(CHANNEL_FL_A, 0);
-    ledcWrite(CHANNEL_FL_B, 0);
-    ledcWrite(CHANNEL_FR_A, 0);
-    ledcWrite(CHANNEL_FR_B, 0);
-    ledcWrite(CHANNEL_BL_A, 0);
-    ledcWrite(CHANNEL_BL_B, 0);
-    ledcWrite(CHANNEL_BR_A, 0);
-    ledcWrite(CHANNEL_BR_B, 0);
+        // Write 0 to all PWM channels.
+        ledcWrite(CHANNEL_FL_A, 0);
+        ledcWrite(CHANNEL_FL_B, 0);
+        ledcWrite(CHANNEL_FR_A, 0);
+        ledcWrite(CHANNEL_FR_B, 0);
+        ledcWrite(CHANNEL_BL_A, 0);
+        ledcWrite(CHANNEL_BL_B, 0);
+        ledcWrite(CHANNEL_BR_A, 0);
+        ledcWrite(CHANNEL_BR_B, 0);
 
-    // Reset cached speed so the next drive() starts from clean baseline.
-    for (uint8_t i = 0; i < MOTOR_COUNT; i++)
-    {
-        lastMotorSpeeds[i] = 0.0f;
-    }
+        // Reset cached speed so the next drive() starts from clean baseline.
+        for (uint8_t i = 0; i < MOTOR_COUNT; i++)
+        {
+            lastMotorSpeeds[i] = 0.0f;
+        }
+    });
 }
 
 // ============================================================================
@@ -369,26 +391,28 @@ void DriveMgr::drive(float strafeX, float forwardY, float rotationX,
     // SetMotorSpeed clamps to ±MAX_MOTOR_SPEED and the trim/gain limits
     // already prevent overflow at the cast boundary.
     // ====================================================================
-    for (uint8_t i = 0; i < MOTOR_COUNT; i++)
-    {
-        float cur  = lastMotorSpeeds[i];
-        float want = targetSpeed[i];
-        float step = want - cur;
+    driveLocked([&]() {
+        for (uint8_t i = 0; i < MOTOR_COUNT; i++)
+        {
+            float cur  = lastMotorSpeeds[i];
+            float want = targetSpeed[i];
+            float step = want - cur;
 
-        // Clamp step size to acceleration limit.
-        if (step >  maxStep)
-            step =  maxStep;
-        if (step < -maxStep)
-            step = -maxStep;
+            // Clamp step size to acceleration limit.
+            if (step >  maxStep)
+                step =  maxStep;
+            if (step < -maxStep)
+                step = -maxStep;
 
-        lastMotorSpeeds[i] = cur + step;
+            lastMotorSpeeds[i] = cur + step;
 
-        // Cast float → int16_t is safe: SetMotorSpeed clamps to
-        // ±MAX_MOTOR_SPEED, and any overflow at the cast boundary is
-        // bounded by trim/gain clamps in their setters (±0.5 trim,
-        // 0.5..1.5 gain, baseSpeed ≤ MAX_MOTOR_SPEED).
-        SetMotorSpeed(i, static_cast<int16_t>(lastMotorSpeeds[i]));
-    }
+            // Cast float → int16_t is safe: SetMotorSpeed clamps to
+            // ±MAX_MOTOR_SPEED, and any overflow at the cast boundary is
+            // bounded by trim/gain clamps in their setters (±0.5 trim,
+            // 0.5..1.5 gain, baseSpeed ≤ MAX_MOTOR_SPEED).
+            SetMotorSpeed(i, static_cast<int16_t>(lastMotorSpeeds[i]));
+        }
+    });
 }
 
 // ============================================================================
@@ -396,58 +420,52 @@ void DriveMgr::drive(float strafeX, float forwardY, float rotationX,
 // ============================================================================
 bool DriveMgr::reinitPins(const MotorPins pins[MOTOR_COUNT], uint32_t freq, uint8_t res)
 {
-    if (!driveMutex) return false;
-    
-    // Take mutex with timeout to avoid deadlock
-    if (xSemaphoreTake(driveMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        return false;
-    }
-    
-    // Stop all motors first (emergency stop bypasses ramp)
-    emergencyStop();
-    
-    // Reconfigure PWM channels with new frequency/resolution if changed
-    if (freq != _pwmFreq || res != _pwmRes) {
-        ledcSetup(CHANNEL_FL_A, freq, res);
-        ledcSetup(CHANNEL_FL_B, freq, res);
-        ledcSetup(CHANNEL_FR_A, freq, res);
-        ledcSetup(CHANNEL_FR_B, freq, res);
-        ledcSetup(CHANNEL_BL_A, freq, res);
-        ledcSetup(CHANNEL_BL_B, freq, res);
-        ledcSetup(CHANNEL_BR_A, freq, res);
-        ledcSetup(CHANNEL_BR_B, freq, res);
-        _pwmFreq = freq;
-        _pwmRes = res;
-    }
-    
-    // Detach old pins and attach new ones
-    ledcDetachPin(motorPins[MOTOR_IDX_FL].pinPWM_A);
-    ledcDetachPin(motorPins[MOTOR_IDX_FL].pinPWM_B);
-    ledcDetachPin(motorPins[MOTOR_IDX_FR].pinPWM_A);
-    ledcDetachPin(motorPins[MOTOR_IDX_FR].pinPWM_B);
-    ledcDetachPin(motorPins[MOTOR_IDX_BL].pinPWM_A);
-    ledcDetachPin(motorPins[MOTOR_IDX_BL].pinPWM_B);
-    ledcDetachPin(motorPins[MOTOR_IDX_BR].pinPWM_A);
-    ledcDetachPin(motorPins[MOTOR_IDX_BR].pinPWM_B);
-    
-    // Attach new pins
-    ledcAttachPin(pins[MOTOR_IDX_FL].pinPWM_A, CHANNEL_FL_A);
-    ledcAttachPin(pins[MOTOR_IDX_FL].pinPWM_B, CHANNEL_FL_B);
-    ledcAttachPin(pins[MOTOR_IDX_FR].pinPWM_A, CHANNEL_FR_A);
-    ledcAttachPin(pins[MOTOR_IDX_FR].pinPWM_B, CHANNEL_FR_B);
-    ledcAttachPin(pins[MOTOR_IDX_BL].pinPWM_A, CHANNEL_BL_A);
-    ledcAttachPin(pins[MOTOR_IDX_BL].pinPWM_B, CHANNEL_BL_B);
-    ledcAttachPin(pins[MOTOR_IDX_BR].pinPWM_A, CHANNEL_BR_A);
-    ledcAttachPin(pins[MOTOR_IDX_BR].pinPWM_B, CHANNEL_BR_B);
-    
-    // Update internal pin table
-    memcpy(motorPins, pins, sizeof(MotorPins) * MOTOR_COUNT);
-    
-    // Reset cached speeds to zero
-    for (uint8_t i = 0; i < MOTOR_COUNT; i++) {
-        lastMotorSpeeds[i] = 0.0f;
-    }
-    
-    xSemaphoreGive(driveMutex);
-    return true;
+    return driveLocked([&]() -> bool {
+        // Stop all motors first (emergency stop bypasses ramp)
+        emergencyStop();
+        
+        // Reconfigure PWM channels with new frequency/resolution if changed
+        if (freq != _pwmFreq || res != _pwmRes) {
+            ledcSetup(CHANNEL_FL_A, freq, res);
+            ledcSetup(CHANNEL_FL_B, freq, res);
+            ledcSetup(CHANNEL_FR_A, freq, res);
+            ledcSetup(CHANNEL_FR_B, freq, res);
+            ledcSetup(CHANNEL_BL_A, freq, res);
+            ledcSetup(CHANNEL_BL_B, freq, res);
+            ledcSetup(CHANNEL_BR_A, freq, res);
+            ledcSetup(CHANNEL_BR_B, freq, res);
+            _pwmFreq = freq;
+            _pwmRes = res;
+        }
+        
+        // Detach old pins and attach new ones
+        ledcDetachPin(motorPins[MOTOR_IDX_FL].pinPWM_A);
+        ledcDetachPin(motorPins[MOTOR_IDX_FL].pinPWM_B);
+        ledcDetachPin(motorPins[MOTOR_IDX_FR].pinPWM_A);
+        ledcDetachPin(motorPins[MOTOR_IDX_FR].pinPWM_B);
+        ledcDetachPin(motorPins[MOTOR_IDX_BL].pinPWM_A);
+        ledcDetachPin(motorPins[MOTOR_IDX_BL].pinPWM_B);
+        ledcDetachPin(motorPins[MOTOR_IDX_BR].pinPWM_A);
+        ledcDetachPin(motorPins[MOTOR_IDX_BR].pinPWM_B);
+        
+        // Attach new pins
+        ledcAttachPin(pins[MOTOR_IDX_FL].pinPWM_A, CHANNEL_FL_A);
+        ledcAttachPin(pins[MOTOR_IDX_FL].pinPWM_B, CHANNEL_FL_B);
+        ledcAttachPin(pins[MOTOR_IDX_FR].pinPWM_A, CHANNEL_FR_A);
+        ledcAttachPin(pins[MOTOR_IDX_FR].pinPWM_B, CHANNEL_FR_B);
+        ledcAttachPin(pins[MOTOR_IDX_BL].pinPWM_A, CHANNEL_BL_A);
+        ledcAttachPin(pins[MOTOR_IDX_BL].pinPWM_B, CHANNEL_BL_B);
+        ledcAttachPin(pins[MOTOR_IDX_BR].pinPWM_A, CHANNEL_BR_A);
+        ledcAttachPin(pins[MOTOR_IDX_BR].pinPWM_B, CHANNEL_BR_B);
+        
+        // Update internal pin table
+        memcpy(motorPins, pins, sizeof(MotorPins) * MOTOR_COUNT);
+        
+        // Reset cached speeds to zero
+        for (uint8_t i = 0; i < MOTOR_COUNT; i++) {
+            lastMotorSpeeds[i] = 0.0f;
+        }
+        
+        return true;
+    });
 }

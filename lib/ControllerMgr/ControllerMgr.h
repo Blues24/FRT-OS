@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <cmath>
 #include <atomic>
+#include <mutex>
 #include <Ps3Controller.h>
 
 /**
@@ -22,6 +23,21 @@ struct BezierSample
     float y;
     float dx; // derivative dx/dt
     
+};
+
+/**
+ * @struct AnalogSnapshot
+ * @brief Thread-safe snapshot of all four analog stick values.
+ *
+ * Captured atomically in the PS3 callback, read by getDriveInput()
+ * to prevent torn reads across cores.
+ */
+struct AnalogSnapshot {
+    int lx = 0;
+    int ly = 0;
+    int rx = 0;
+    int ry = 0;
+    uint32_t timestamp = 0;
 };
 
 /**
@@ -52,6 +68,10 @@ class ControllerMgr {
     private:
         // Cache atomic status koneksi PS3 (thread-safe untuk multi-core).
         std::atomic<bool> _connectedCache{false};
+        
+        // Mutex for protecting analog stick snapshot
+        std::mutex _analogMutex;
+        AnalogSnapshot _analogSnapshot;
 
         // Constructor Kelas ControllerMgr
         ControllerMgr();
@@ -71,7 +91,6 @@ class ControllerMgr {
         // Deadzone maksimum (dicadangkan untuk penggunaan lanjut, saat ini tidak dipakai).
         static const uint8_t MAX_DZ                      = 40;
         
-
         // ---- Callback library Ps3Controller.h ----
         // Dipasang ke Ps3.attach(): terpanggil setiap ada update data dari PS3.
         // Saat ini dijadikan placeholder untuk membunyikan buzzer sebagai umpan balik.
@@ -160,7 +179,7 @@ class ControllerMgr {
          * @brief Mengambil dan memproses input stick untuk kebutuhan driving.
          *        Alur kerja:
          *          1. Jika tidak terkoneksi → semua output di-nol-kan, keluar.
-         *          2. Baca analog stick kiri/kanan (lx, ly, rx, ry).
+         *          2. Baca analog stick snapshot (thread-safe via mutex).
          *          3. Terapkan deadzone (MIN_DZ untuk stick kiri, BOOST_DZ untuk kanan).
          *          4. Normalisasi ke rentang -1.0 .. 1.0 (di luar deadzone boost).
          *          5. Aplikasikan kurva Bézier lewat applyBezierCurve() agar
@@ -194,7 +213,7 @@ class ControllerMgr {
         /**
          * @brief Menerapkan kurva Bézier ke sebuah nilai input. Mendukung nilai
          *        negatif dengan memproses magnitude lalu mengembalikan tanda yang
-        *        sama. Input 0 langsung menghasilkan 0.
+         *        sama. Input 0 langsung menghasilkan 0.
          *
          * @param rawVal nilai input ternormalisasi (-1.0 .. 1.0).
          * @return hasil setelah dilewatkan kurva, dengan tanda yang sama dengan rawVal.

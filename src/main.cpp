@@ -180,9 +180,7 @@ void setup() {
     Serial.println("[BOOT] MotorInit done.");
 
     // ---- Servo + Gripper ----
-    servoInit();
-    // Override servo pins from saved config
-    servoReinitPins(pinCfg.servos.pins);
+    servoInit(pinCfg.servos.pins);
     Serial.println("[BOOT] ServoMgr init done.");
 
     // ---- WiFi AP (Core 0) ----

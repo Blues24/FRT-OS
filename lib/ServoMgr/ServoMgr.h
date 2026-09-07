@@ -14,7 +14,8 @@ enum ServoID {
     GRIP2_SMALL2 = 5
 };
 
-void servoInit();
+// Initialize all 6 servos with the provided pins array
+void servoInit(const uint8_t pins[SERVO_COUNT]);
 
 // Reinitialize servo pins at runtime
 bool servoReinitPins(const uint8_t pins[SERVO_COUNT]);

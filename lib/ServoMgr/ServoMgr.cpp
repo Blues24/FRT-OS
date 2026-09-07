@@ -36,10 +36,10 @@ static int unitOffset(int unit) {
 }
 
 // Inisialisasi semua 6 servo dengan pin masing-masing
-void servoInit() {
+void servoInit(const uint8_t pins[SERVO_COUNT]) {
     for (int i = 0; i < SERVO_COUNT; i++) {
-        currentServoPins[i] = DEFAULT_SERVO_PINS[i];
-        gripperInit(grippers[i], DEFAULT_SERVO_PINS[i]);
+        currentServoPins[i] = pins[i];
+        gripperInit(grippers[i], pins[i]);
     }
 }
 

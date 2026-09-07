@@ -2,6 +2,7 @@
 #include "ServoMgr.h"
 #include "PinConfig.h"
 #include "DriveMgr.h"
+#include <ArduinoJson.h>
 
 static const char UI_INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
@@ -995,52 +996,52 @@ void handlePinsPost(AsyncWebServerRequest* request) {
     
     String body = request->getParam("data", true)->value();
     
-    // Simple JSON parsing for our known structure
+    // Load current config for rollback on failure
+    PinConfig prevCfg = PinConfigMgr::getInstance().load();
+    MotorPins prevMotorPins[MOTOR_COUNT] = {
+        {prevCfg.motors.fl_a, prevCfg.motors.fl_b},
+        {prevCfg.motors.fr_a, prevCfg.motors.fr_b},
+        {prevCfg.motors.bl_a, prevCfg.motors.bl_b},
+        {prevCfg.motors.br_a, prevCfg.motors.br_b}
+    };
+    uint8_t prevServoPins[SERVO_COUNT];
+    memcpy(prevServoPins, prevCfg.servos.pins, sizeof(prevServoPins));
+    
+    // Parse JSON using ArduinoJson
+    StaticJsonDocument<1024> doc;
+    DeserializationError err = deserializeJson(doc, body);
+    if (err) {
+        request->send(400, "text/plain", "invalid JSON: " + String(err.c_str()));
+        return;
+    }
+    
     PinConfig cfg;
     
-    // Parse motor pins
-    auto extractInt = [&](const String& str, const char* key, int defVal) -> int {
-        int idx = str.indexOf(key);
-        if (idx < 0) return defVal;
-        idx = str.indexOf(':', idx);
-        if (idx < 0) return defVal;
-        idx++;
-        while (idx < str.length() && (str[idx] == ' ' || str[idx] == '\t')) idx++;
-        int val = 0;
-        bool neg = false;
-        if (str[idx] == '-') { neg = true; idx++; }
-        while (idx < str.length() && isDigit(str[idx])) {
-            val = val * 10 + (str[idx] - '0');
-            idx++;
-        }
-        return neg ? -val : val;
-    };
+    // Parse motor pins - require all 8 properties
+    JsonObject motors = doc["motors"];
+    if (!motors || motors.size() != 8) {
+        request->send(400, "text/plain", "missing or incomplete motors object (need fl_a, fl_b, fr_a, fr_b, bl_a, bl_b, br_a, br_b)");
+        return;
+    }
     
-    cfg.motors.fl_a = extractInt(body, "\"fl_a\"", cfg.motors.fl_a);
-    cfg.motors.fl_b = extractInt(body, "\"fl_b\"", cfg.motors.fl_b);
-    cfg.motors.fr_a = extractInt(body, "\"fr_a\"", cfg.motors.fr_a);
-    cfg.motors.fr_b = extractInt(body, "\"fr_b\"", cfg.motors.fr_b);
-    cfg.motors.bl_a = extractInt(body, "\"bl_a\"", cfg.motors.bl_a);
-    cfg.motors.bl_b = extractInt(body, "\"bl_b\"", cfg.motors.bl_b);
-    cfg.motors.br_a = extractInt(body, "\"br_a\"", cfg.motors.br_a);
-    cfg.motors.br_b = extractInt(body, "\"br_b\"", cfg.motors.br_b);
+    cfg.motors.fl_a = motors["fl_a"] | prevCfg.motors.fl_a;
+    cfg.motors.fl_b = motors["fl_b"] | prevCfg.motors.fl_b;
+    cfg.motors.fr_a = motors["fr_a"] | prevCfg.motors.fr_a;
+    cfg.motors.fr_b = motors["fr_b"] | prevCfg.motors.fr_b;
+    cfg.motors.bl_a = motors["bl_a"] | prevCfg.motors.bl_a;
+    cfg.motors.bl_b = motors["bl_b"] | prevCfg.motors.bl_b;
+    cfg.motors.br_a = motors["br_a"] | prevCfg.motors.br_a;
+    cfg.motors.br_b = motors["br_b"] | prevCfg.motors.br_b;
     
-    // Parse servo pins array
-    int servoIdx = body.indexOf("\"servos\"");
-    if (servoIdx >= 0) {
-        servoIdx = body.indexOf('[', servoIdx);
-        if (servoIdx >= 0) {
-            servoIdx++;
-            for (int i = 0; i < 6; i++) {
-                while (servoIdx < body.length() && (body[servoIdx] == ' ' || body[servoIdx] == '\t' || body[servoIdx] == ',')) servoIdx++;
-                int val = 0;
-                while (servoIdx < body.length() && isDigit(body[servoIdx])) {
-                    val = val * 10 + (body[servoIdx] - '0');
-                    servoIdx++;
-                }
-                cfg.servos.pins[i] = val;
-            }
-        }
+    // Parse servo pins array - require exactly 6 elements
+    JsonArray servos = doc["servos"];
+    if (!servos || servos.size() != 6) {
+        request->send(400, "text/plain", "missing or incomplete servos array (need exactly 6 elements)");
+        return;
+    }
+    
+    for (int i = 0; i < 6; i++) {
+        cfg.servos.pins[i] = servos[i] | prevCfg.servos.pins[i];
     }
     
     // Validate
@@ -1050,7 +1051,7 @@ void handlePinsPost(AsyncWebServerRequest* request) {
         return;
     }
     
-    // Apply to hardware
+    // Apply to hardware - transactional: each step must succeed
     MotorPins motorPins[MOTOR_COUNT];
     motorPins[MOTOR_IDX_FL] = {cfg.motors.fl_a, cfg.motors.fl_b};
     motorPins[MOTOR_IDX_FR] = {cfg.motors.fr_a, cfg.motors.fr_b};
@@ -1058,15 +1059,29 @@ void handlePinsPost(AsyncWebServerRequest* request) {
     motorPins[MOTOR_IDX_BR] = {cfg.motors.br_a, cfg.motors.br_b};
     
     bool ok = true;
+    
+    // Step 1: Reinitialize drive pins
     ok &= drive.reinitPins(motorPins, 10000, 8);
+    
+    // Step 2: Reinitialize servo pins (now returns bool)
     ok &= servoReinitPins(cfg.servos.pins);
     
+    // Step 3: Save to NVS
     if (ok) {
-        PinConfigMgr::getInstance().save(cfg);
-        request->send(200, "text/plain", "ok");
-    } else {
-        request->send(500, "text/plain", "hardware reinit failed");
+        ok &= PinConfigMgr::getInstance().save(cfg);
     }
+    
+    // Rollback on any failure
+    if (!ok) {
+        // Restore previous motor pins
+        drive.reinitPins(prevMotorPins, 10000, 8);
+        // Restore previous servo pins
+        servoReinitPins(prevServoPins);
+        request->send(500, "text/plain", "hardware reinit failed, rolled back");
+        return;
+    }
+    
+    request->send(200, "text/plain", "ok");
 }
 
 void wsMgrBegin() {

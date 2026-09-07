@@ -157,6 +157,16 @@ bool PinConfigMgr::validate(const PinConfig& config, String& errorMsg) {
         if (!checkPin(config.servos.pins[i], name)) return false;
     }
     
+    // Check for duplicate servo pins (pairwise comparison across all 6 servo pins)
+    for (int i = 0; i < 6; i++) {
+        for (int j = i + 1; j < 6; j++) {
+            if (config.servos.pins[i] == config.servos.pins[j]) {
+                errorMsg = "Duplicate servo pin: Servo" + String(i) + " and Servo" + String(j) + " both use pin " + String(config.servos.pins[i]);
+                return false;
+            }
+        }
+    }
+    
     // Check servo pins don't conflict with motor pins
     for (int i = 0; i < 6; i++) {
         for (int j = 0; j < 8; j++) {

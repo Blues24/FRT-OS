@@ -9,7 +9,18 @@ ControllerMgr& ControllerMgr::getInstance(){
 
 ControllerMgr::ControllerMgr() : bezierControlX1(0.0f), bezierControlX2(1.0f), bezierControlY1(0.0f), bezierControlY2(1.0f) {}
 
+// Callback called when PS3 data is received - capture analog stick snapshot atomically
 void ControllerMgr::notifyUser(){
+    // Capture analog stick snapshot under mutex
+    {
+        std::lock_guard<std::mutex> lock(getInstance()._analogMutex);
+        getInstance()._analogSnapshot.lx = Ps3.data.analog.stick.lx;
+        getInstance()._analogSnapshot.ly = Ps3.data.analog.stick.ly;
+        getInstance()._analogSnapshot.rx = Ps3.data.analog.stick.rx;
+        getInstance()._analogSnapshot.ry = Ps3.data.analog.stick.ry;
+        getInstance()._analogSnapshot.timestamp = millis();
+    }
+    
     // Sambut pengguna menggunakan buzzer
     Buzzer::getBuzzerInstance().playStartup();
 }
@@ -59,10 +70,17 @@ void ControllerMgr::getDriveInput(float& leftStickX, float& leftStickY, float& r
         return;
     }
 
-    int stickLeftX  = Ps3.data.analog.stick.lx;
-    int stickLeftY  = Ps3.data.analog.stick.ly;
-    int stickRightX = Ps3.data.analog.stick.rx;
-    int stickRightY = Ps3.data.analog.stick.ry;
+    // Read analog stick snapshot atomically
+    AnalogSnapshot snap;
+    {
+        std::lock_guard<std::mutex> lock(_analogMutex);
+        snap = _analogSnapshot;
+    }
+    
+    int stickLeftX  = snap.lx;
+    int stickLeftY  = snap.ly;
+    int stickRightX = snap.rx;
+    int stickRightY = snap.ry;
 
     // terapkan deadzone
     int absLeftX  = abs(stickLeftX);
@@ -82,7 +100,7 @@ void ControllerMgr::getDriveInput(float& leftStickX, float& leftStickY, float& r
 
     if(absLeftX > BOOST_DZ)  normalizedLeftX = (stickLeftX - (stickLeftX > 0 ? BOOST_DZ : -BOOST_DZ)) / (127.0f - BOOST_DZ);
     if(absLeftY > BOOST_DZ)  normalizedLeftY = (stickLeftY - (stickLeftY > 0 ? BOOST_DZ : -BOOST_DZ)) / (127.0f - BOOST_DZ);
-    if(absRightX > BOOST_DZ) normalizedRightX = rightStickX / 127.0f;
+    if(absRightX > BOOST_DZ) normalizedRightX = stickRightX / 127.0f;
 
     normalizedLeftX  = constrain(normalizedLeftX, -1.0f, 1.0f);
     normalizedLeftY  = constrain(normalizedLeftY, -1.0f, 1.0f);
